@@ -51,10 +51,46 @@ function draw() {
 
     if (mode == 1) {
         // プレイヤーをキーボードで動かす (02)
+        if(keyIsDown(LEFT_ARROW)){
+            playerX = playerX - 5;
+        }
+        if(keyIsDown(RIGHT_ARROW)){
+            playerX = playerX + 5;
+        }  
+        if(keyIsDown(UP_ARROW)){
+            playerY = playerY - 5;
+        }
+        if(keyIsDown(DOWN_ARROW)){
+            playerY = playerY + 5
+        }
 
         // シャボン玉を等速で動かし、画面の外に出たら反対側から出てくる (03)
+    for(let i = 0; i < bubbleX.length; i++){
+        bubbleX[i] = bubbleX[i] + bubbleSpeedX[i];
+        bubbleY[i] = bubbleY[i] + bubbleSpeedY[i];
 
+        if(bubbleX[i]<0) {
+            bubbleX[i] = 0;
+        }
+        if(bubbleX[i]>width) {
+            bubbleX[i] = 0;
+        }
+        if(bubbleY[i]<0) {
+            bubbleY[i] = height
+        }
+        if(bubbleY[i]>height) {
+            bubbleY[i] = 0;
+        }
+    } 
         // シャボン玉に触れたらゲームオーバー (04)
+        for(let i=0; i< bubbleX.length; i++){
+            if(
+                dist(playerX, playerY, bubbleX[i], bubbleY[i])<
+            playerRadius + bubbleRadius[i]
+        ){
+            mode = 2;
+        }
+        }
 
         // プレイヤーを表示する
         fill(255, 100, 150);
