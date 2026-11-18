@@ -12,6 +12,10 @@ let itemRespawnAt = null;
 let invulnerableUntil = 0;
 let activeEffectText = "";
 let activeEffectUntil = 0;
+let stage = 1;
+let stageIntroStartTime = 0;
+let movementKeys = {};
+let movementListenersRegistered = false;
 let playerX;
 let playerY;
 let playerRadius;
@@ -23,10 +27,24 @@ let bubbleOriginalRadius;
 let bubbleDangerous;
 let bubbleSpeedX;
 let bubbleSpeedY;
+const stageTwoObstacles = [
+    { x: 105, y: 130, width: 38, height: 130 },
+    { x: 350, y: 250, width: 38, height: 130 }
+];
 
 function setup() {
     createCanvas(500, 500);
 
+    movementKeys = {};
+    if (!movementListenersRegistered) {
+        window.addEventListener("keydown", handleMovementKeyDown);
+        window.addEventListener("keyup", handleMovementKeyUp);
+        window.addEventListener("blur", clearMovementKeys);
+        document.addEventListener("visibilitychange", clearMovementKeysWhenHidden);
+        movementListenersRegistered = true;
+    }
+    stage = 1;
+    stageIntroStartTime = 0;
     playerX = width / 2;
     playerY = height / 2;
     playerOriginalRadius = 15;
@@ -43,7 +61,10 @@ function setup() {
     activeEffectText = "";
     activeEffectUntil = 0;
 
-    // シャボン玉の位置・半径をランダムに決める
+    createBubbles();
+}
+
+function createBubbles() {
     bubbleX = [];
     bubbleY = [];
     bubbleRadius = [];
@@ -82,7 +103,7 @@ function draw() {
         text("R: 赤 / B: 青 (選択中: " + (playerColor == "red" ? "赤" : "青") + ")", width / 2, height / 2 + 20);
         text("1: イージー (速度変化なし・アイテムあり)", width / 2, height / 2 + 50);
         text("2: 普通 (速度変化なし・アイテムなし)", width / 2, height / 2 + 70);
-        text("3: スーパー (3秒加速・12秒通常・アイテムあり)", width / 2, height / 2 + 90);
+        text("3: スーパー (2秒加速・13秒通常・アイテムあり)", width / 2, height / 2 + 90);
         text("4: ハード (常時加速・アイテムあり)", width / 2, height / 2 + 110);
         let difficultyName = { easy: "イージー", normal: "普通", super: "スーパー", hard: "ハード" }[gameDifficulty];
         text("選択中: " + difficultyName, width / 2, height / 2 + 135);
@@ -92,9 +113,15 @@ function draw() {
     if (mode == 1) {
         let currentTime = millis();
         let elapsedTime = currentTime - gameStartTime;
+        if (stage == 1 && elapsedTime >= 60000) {
+            stage = 2;
+            stageIntroStartTime = currentTime;
+            mode = 3;
+            return;
+        }
         let speedMultiplier = 1;
-        if (gameDifficulty == "super" && elapsedTime % 15000 < 3000) {
-            speedMultiplier = 2;
+        if (gameDifficulty == "super" && elapsedTime % 15000 < 2000) {
+            speedMultiplier = 1.5;
         } else if (gameDifficulty == "hard") {
             speedMultiplier = 2;
         }
@@ -126,20 +153,29 @@ function draw() {
         }
 
         // プレイヤーをキーボードで動かす (02)
-        if(keyIsDown(LEFT_ARROW)){
-            playerX = playerX - 5;
+        let nextX = playerX;
+        let nextY = playerY;
+        if (movementKeys.ArrowLeft) {
+            nextX -= 5;
         }
-        if(keyIsDown(RIGHT_ARROW)){
-            playerX = playerX + 5;
-        }  
-        if(keyIsDown(UP_ARROW)){
-            playerY = playerY - 5;
+        if (movementKeys.ArrowRight) {
+            nextX += 5;
         }
-        if(keyIsDown(DOWN_ARROW)){
-            playerY = playerY + 5
+        if (movementKeys.ArrowUp) {
+            nextY -= 5;
         }
-        playerX = constrain(playerX, playerRadius, width - playerRadius);
-        playerY = constrain(playerY, playerRadius, height - playerRadius);
+        if (movementKeys.ArrowDown) {
+            nextY += 5;
+        }
+        nextX = constrain(nextX, playerRadius, width - playerRadius);
+        nextY = constrain(nextY, playerRadius, height - playerRadius);
+
+        if (stage != 2 || !overlapsStageTwoObstacle(nextX, playerY)) {
+            playerX = nextX;
+        }
+        if (stage != 2 || !overlapsStageTwoObstacle(playerX, nextY)) {
+            playerY = nextY;
+        }
 
         // シャボン玉を等速で動かし、画面の外に出たら反対側から出てくる (03)
     for(let i = 0; i < bubbleX.length; i++){
@@ -163,27 +199,26 @@ function draw() {
         if (itemAvailable) {
             let closestX = constrain(playerX, itemX, itemX + itemSize);
             let closestY = constrain(playerY, itemY, itemY + itemSize);
-            if (dist(playerX, playerY, closestX, closestY) < playerRadius) {
-                let effect = floor(random(3));
+            let itemTouched = dist(playerX, playerY, closestX, closestY) < playerRadius;
+            if (itemTouched) {
                 itemAvailable = false;
+                itemRespawnAt = currentTime + 20000;
 
+                let effect = floor(random(3));
                 if (effect == 0) {
                     for (let i = 0; i < bubbleRadius.length; i++) {
                         bubbleRadius[i] = max(8, bubbleOriginalRadius[i] * 0.7);
                     }
                     bubbleRestoreAt = currentTime + 25000;
-                    itemRespawnAt = bubbleRestoreAt + 60000;
                     activeEffectText = "シャボン玉縮小中";
                     activeEffectUntil = bubbleRestoreAt;
                 } else if (effect == 1) {
                     playerRadius = playerOriginalRadius * 0.7;
                     playerRestoreAt = currentTime + 15000;
-                    itemRespawnAt = playerRestoreAt + 60000;
                     activeEffectText = "プレイヤー縮小中";
                     activeEffectUntil = playerRestoreAt;
                 } else {
                     invulnerableUntil = currentTime + 10000;
-                    itemRespawnAt = invulnerableUntil + 60000;
                     activeEffectText = "無敵中";
                     activeEffectUntil = invulnerableUntil;
                     for (let i = 0; i < bubbleDangerous.length; i++) {
@@ -230,7 +265,15 @@ function draw() {
             circle(bubbleX[i], bubbleY[i], bubbleRadius[i] * 2);
         }
 
-        if (speedMultiplier == 2) {
+        if (stage == 2) {
+            fill(80);
+            noStroke();
+            for (const obstacle of stageTwoObstacles) {
+                rect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            }
+        }
+
+        if (speedMultiplier > 1) {
             fill(0);
             noStroke();
             textAlign(CENTER);
@@ -258,6 +301,37 @@ function draw() {
         text("ゲームオーバー", width / 2, height / 2 - 20);
         text("スペースキーでスタート画面に戻る", width / 2, height / 2 + 20);
     }
+
+    if (mode == 3) {
+        let introElapsed = millis() - stageIntroStartTime;
+        let introProgress = constrain(introElapsed / 2000, 0, 1);
+        fill(0);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        textSize(lerp(130, 32, introProgress));
+        text("STAGE2", width / 2, height / 2);
+        textSize(12);
+
+        if (introElapsed >= 2000) {
+            mode = 1;
+            gameStartTime = millis();
+            clearMovementKeys();
+            playerX = width / 2;
+            playerY = height / 2;
+            for (let i = 0; i < bubbleX.length; i++) {
+                if (dist(playerX, playerY, bubbleX[i], bubbleY[i]) < playerRadius + bubbleRadius[i]) {
+                    let x = random(0, width);
+                    let y = random(0, height);
+                    while (dist(x, y, playerX, playerY) < 100) {
+                        x = random(0, width);
+                        y = random(0, height);
+                    }
+                    bubbleX[i] = x;
+                    bubbleY[i] = y;
+                }
+            }
+        }
+    }
 }
 
 function placeItem() {
@@ -266,6 +340,45 @@ function placeItem() {
     while (dist(itemX + itemSize / 2, itemY + itemSize / 2, playerX, playerY) < 100) {
         itemX = random(itemSize, width - itemSize * 2);
         itemY = random(itemSize, height - itemSize * 2);
+    }
+}
+
+function overlapsStageTwoObstacle(x, y) {
+    for (const obstacle of stageTwoObstacles) {
+        let closestX = constrain(x, obstacle.x, obstacle.x + obstacle.width);
+        let closestY = constrain(y, obstacle.y, obstacle.y + obstacle.height);
+        if (dist(x, y, closestX, closestY) < playerRadius) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function clearMovementKeys() {
+    movementKeys = {};
+}
+
+function handleMovementKeyDown(event) {
+    if (!event.code.startsWith("Arrow")) {
+        return;
+    }
+
+    event.preventDefault();
+    if (mode == 1) {
+        movementKeys[event.code] = true;
+    }
+}
+
+function handleMovementKeyUp(event) {
+    if (event.code.startsWith("Arrow")) {
+        delete movementKeys[event.code];
+        event.preventDefault();
+    }
+}
+
+function clearMovementKeysWhenHidden() {
+    if (document.hidden) {
+        clearMovementKeys();
     }
 }
 
@@ -301,4 +414,5 @@ function keyPressed() {
             mode = 0;
         }
     }
+
 }
